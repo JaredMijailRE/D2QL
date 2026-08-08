@@ -6,4 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "jpype1>=1.7.1",
+    "torch>=2.13.0",
 ]
+
+[project.scripts]
+build-deps = "scripts.build_deps:main"
+
