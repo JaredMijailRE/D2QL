@@ -1,0 +1,9 @@
+[project]
+name = "d2ql"
+version = "0.1.0"
+description = "Scheudler development and simulation enviornment based on cloudsim"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jpype1>=1.7.1",
+]
