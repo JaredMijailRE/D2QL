@@ -1,44 +1,54 @@
 import random
 from pathlib import Path
-import jpype
-import jpype.imports
+from py4j.java_gateway import JavaGateway, java_import
 
 libs_path = Path(__file__).parent / "libs" / "*"
 
-if not jpype.isJVMStarted():
-    jpype.startJVM(
-        "--enable-native-access=ALL-UNNAMED",
-        classpath=[str(libs_path)]
-    )
+gateway = JavaGateway.launch_gateway(
+    classpath=str(libs_path),
+    javaopts=["--enable-native-access=ALL-UNNAMED"],
+    die_on_exit=True
+)
 
-from java.util import ArrayList
+jvm = gateway.jvm
 
-from org.cloudsimplus.core import CloudSimPlus
-from org.cloudsimplus.datacenters import DatacenterSimple
-from org.cloudsimplus.hosts import HostSimple
-from org.cloudsimplus.resources import PeSimple
-from org.cloudsimplus.vms import VmSimple
-from org.cloudsimplus.cloudlets import CloudletSimple
-from org.cloudsimplus.brokers import DatacenterBrokerSimple
-from org.cloudsimplus.schedulers.cloudlet import CloudletSchedulerTimeShared
-from org.cloudsimplus.schedulers.vm import VmSchedulerTimeShared
+java_import(jvm, "java.util.ArrayList")
+java_import(jvm, "org.cloudsimplus.core.CloudSimPlus")
+java_import(jvm, "org.cloudsimplus.datacenters.DatacenterSimple")
+java_import(jvm, "org.cloudsimplus.hosts.HostSimple")
+java_import(jvm, "org.cloudsimplus.resources.PeSimple")
+java_import(jvm, "org.cloudsimplus.vms.VmSimple")
+java_import(jvm, "org.cloudsimplus.cloudlets.CloudletSimple")
+java_import(jvm, "org.cloudsimplus.brokers.DatacenterBrokerSimple")
+java_import(jvm, "org.cloudsimplus.schedulers.cloudlet.CloudletSchedulerTimeShared")
+java_import(jvm, "org.cloudsimplus.schedulers.vm.VmSchedulerTimeShared")
 
-simulation = CloudSimPlus()
+def to_java_list(py_list):
+    java_list = jvm.ArrayList()
+    for item in py_list:
+        java_list.add(item)
+    return java_list
 
-pe_list = ArrayList([PeSimple(1000) for _ in range(8)])
-host = HostSimple(16384, 10000, 1000000, pe_list)
-host.setVmScheduler(VmSchedulerTimeShared())
+simulation = jvm.CloudSimPlus()
 
-datacenter = DatacenterSimple(simulation, ArrayList([host]))
-broker = DatacenterBrokerSimple(simulation)
+pe_list = to_java_list([jvm.PeSimple(1000.0) for _ in range(8)])
+host = jvm.HostSimple(16384, 10000, 1000000, pe_list)
+host.setVmScheduler(jvm.VmSchedulerTimeShared())
+
+datacenter = jvm.DatacenterSimple(simulation, to_java_list([host]))
+broker = jvm.DatacenterBrokerSimple(simulation)
 
 vm_list = [
-    VmSimple(1000, 1).setRam(2048).setBw(1000).setSize(10000).setCloudletScheduler(CloudletSchedulerTimeShared())
+    jvm.VmSimple(1000.0, 1)
+       .setRam(2048)
+       .setBw(1000)
+       .setSize(10000)
+       .setCloudletScheduler(jvm.CloudletSchedulerTimeShared())
     for _ in range(5)
 ]
 
 cloudlet_list = [
-    CloudletSimple(10000, 1)
+    jvm.CloudletSimple(10000, 1)
     for _ in range(10)
 ]
 
@@ -51,17 +61,16 @@ class RandomSchedulerAgent:
 agent = RandomSchedulerAgent()
 agent.schedule(cloudlet_list, vm_list)
 
-broker.submitVmList(ArrayList(vm_list))
-broker.submitCloudletList(ArrayList(cloudlet_list))
+broker.submitVmList(to_java_list(vm_list))
+broker.submitCloudletList(to_java_list(cloudlet_list))
 
 simulation.start()
 
-# Imprimir resultados
 for cloudlet in broker.getCloudletFinishedList():
     print(
         f"Cloudlet {cloudlet.getId()} -> "
         f"Asignado a VM {cloudlet.getVm().getId()} | "
         f"Tiempo de CPU: {cloudlet.getTotalExecutionTime():.2f}s"
     )
-    
-jpype.shutdownJVM()
+
+gateway.shutdown()

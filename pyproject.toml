@@ -5,7 +5,7 @@ description = "Scheudler development and simulation enviornment based on cloudsi
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "jpype1>=1.7.1",
+    "py4j>=0.10.9.9",
     "torch>=2.13.0",
 ]
 
