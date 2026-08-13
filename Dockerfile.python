@@ -9,11 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy package configurations
-COPY python-agent/pyproject.toml python-agent/uv.lock ./
+# Copy package configurations directly from the root context
+COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 
-# Copy agent and package code
+# Copy agent package code from the subdirectory
 COPY python-agent/d2ql ./d2ql
 COPY python-agent/main.py ./
 
