@@ -29,17 +29,20 @@ class CloudSimEnv(gym.Env):
         self.total_vms = self.config["datacenter"]["n_cloud_hosts"] * 4 # example VM count mapping
         self.action_space = spaces.Discrete(self.total_vms + 3)
 
+
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        # Call the SimulationGateway entrypoint in Java to clean and recreate the simulation
-        self.java_gateway_entry = self.gateway.entry_point
-        self.java_sim = self.java_gateway_entry.createSimulation()
-        
-        # Re-initialize hosts, VMs, and Cloudlets here based on your workload configuration
-        
-        state = np.zeros(self.state_dim, dtype=np.float32) # Fetch active normalized state
-        info = {}
-        return state, info
+        # Call the structured gateway reset, not createSimulation()
+        self.java_entry = self.gateway.entry_point
+        self.java_entry.reset()
+
+        # Fetch the real initial observation from the simulator
+        obs_java = self.java_entry.getObservation()  # returns double[]
+        obs = np.array(list(obs_java), dtype=np.float32)
+
+        return obs, {}
+
 
     def step(self, action):
         # 1. Map python action to Java simulator call
