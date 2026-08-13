@@ -100,6 +100,15 @@ class DDQNAgent:
         self.per_beta_start = config["agent"]["per_beta_start"] # default 0.4
         self.per_beta_end = config["agent"]["per_beta_end"] # default 1.0
         self.total_episodes = config["training"]["n_episodes"] # default 600
+
+        # Seed numpy and torch for reproducible runs
+        seed = config.get("experiment", {}).get("seed", 42)
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
         
         # Networks initialization
         self.online_net = QNetwork(state_dim, action_dim).to(self.device)
