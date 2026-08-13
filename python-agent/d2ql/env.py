@@ -1,4 +1,5 @@
 import os
+import time 
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -12,11 +13,22 @@ class CloudSimEnv(gym.Env):
         # Connect to the Java Gateway container
         java_host = os.getenv("JAVA_HOST", "localhost")
         java_port = int(os.getenv("JAVA_PORT", 25333))
+
+        # Retry loop: Java container may still be starting
+        max_retries = 10
+        for attempt in range(1, max_retries + 1):
+            try:
+                self.gateway = JavaGateway(
+                    gateway_parameters=GatewayParameters(address=java_host, port=java_port)
+                )
+                # Probe the connection before proceeding
+                self.gateway.entry_point.getObservation()
+                break
+            except Exception:
+                if attempt == max_retries:
+                    raise RuntimeError(f"Could not connect to java gateway at {java_host}:{java_port} after {max_retries} attempts.")    
+                time.sleep(3)
         
-        self.gateway = JavaGateway(
-            gateway_parameters=GatewayParameters(address=java_host, port=java_port)
-        )
-        self.jvm = self.gateway.jvm
         
         # Space specs
         n_hosts = self.config["datacenter"]["n_cloud_hosts"] + self.config["datacenter"]["n_edge_nodes"]
