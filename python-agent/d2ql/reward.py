@@ -14,7 +14,7 @@ class RewardManager:
         self.alpha_w = config["reward"]["weight_lr"] # default 0.01
         
         # Weight floors
-        self.w_perf_floor = config["reward"]["w_perf_floor"] # default 0.2
+        self.w_sla_floor = config["reward"]["w_perf_floor"] # default 0.2
         self.w_energy_floor = config["reward"]["w_energy_floor"] # default 0.1
         self.w_cost_floor = config["reward"]["w_cost_floor"] # default 0.1
         self.sum_floors = self.w_perf_floor + self.w_energy_floor + self.w_cost_floor # 0.4
@@ -52,6 +52,7 @@ class RewardManager:
             phi_util = 0.0
             
         # Composite calculation
+        # w[0] -> SLA/performance, w[1] -> energy, w[2] -> utilizations/cost
         r_t = (self.w[0] * phi_sla) + (self.w[1] * phi_energy) + (self.w[2] * phi_util)
         
         # Apply migration penalty if the agent rescheduled a task mid-execution
@@ -99,7 +100,7 @@ class RewardManager:
 
     def get_current_weights(self) -> dict:
         return {
-            "w_perf": float(self.w[0]),
+            "w_sla": float(self.w[0]),
             "w_energy": float(self.w[1]),
             "w_cost": float(self.w[2])
         }
