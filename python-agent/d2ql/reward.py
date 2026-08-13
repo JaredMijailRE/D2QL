@@ -17,7 +17,7 @@ class RewardManager:
         self.w_sla_floor = config["reward"]["w_perf_floor"] # default 0.2
         self.w_energy_floor = config["reward"]["w_energy_floor"] # default 0.1
         self.w_cost_floor = config["reward"]["w_cost_floor"] # default 0.1
-        self.sum_floors = self.w_perf_floor + self.w_energy_floor + self.w_cost_floor # 0.4
+        self.sum_floors = self.w_sla_floor + self.w_energy_floor + self.w_cost_floor # 0.4
         
         # Current weights (initialized to defaults)
         self.w = np.array([
@@ -77,7 +77,7 @@ class RewardManager:
         # Constrained Projection to respect weight floors
         # Subtract floors to evaluate residual weight pools
         residuals = np.array([
-            self.w[0] - self.w_perf_floor,
+            self.w[0] - self.w_sla_floor,
             self.w[1] - self.w_energy_floor,
             self.w[2] - self.w_cost_floor
         ], dtype=np.float32)
