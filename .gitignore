@@ -1,2 +1,38 @@
-**/libs/
-**/__pycache__/
+# --- Python and virtual environments ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+.uv/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# --- Java and Maven builds ---
+target/
+*.class
+*.jar
+*.war
+*.ear
+dependency-reduced-pom.xml
+.classpath
+.project
+.settings/
+.factorypath
+
+# --- IDE and editor files ---
+.idea/
+*.iml
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+
+# --- d2ql Project Telemetry and Data ---
+# Exclude raw workloads and datasets
+data/*
+!data/.gitkeep
+
+# Exclude training checkpoints and telemetry
+outputs/
