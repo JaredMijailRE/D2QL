@@ -129,7 +129,7 @@ class DDQNAgent:
         if not evaluate and random.random() < self.epsilon:
             return random.randint(0, self.action_dim - 1)
             
-        state_tensor = torch.tensor(state, dtype=torch.float32, devide=self.device).unsqueeze(0)
+        state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
         with torch.no_grad():
             q_values = self.online_net(state_tensor)
             return int(q_values.argmax(dim=1).item())
