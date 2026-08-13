@@ -120,7 +120,7 @@ class DDQNAgent:
         if not evaluate and random.random() < self.epsilon:
             return random.randint(0, self.action_dim - 1)
             
-        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        state_tensor = torch.tensor(state, dtype=torch.float32, devide=self.device).unsqueeze(0)
         with torch.no_grad():
             q_values = self.online_net(state_tensor)
             return int(q_values.argmax(dim=1).item())
@@ -142,12 +142,12 @@ class DDQNAgent:
         states, actions, rewards, next_states, dones, weights, indices = self.memory.sample(self.batch_size, beta)
         
         # Convert to Tensors
-        states = torch.FloatTensor(states).to(self.device)
-        actions = torch.LongTensor(actions).to(self.device)
-        rewards = torch.FloatTensor(rewards).to(self.device)
-        next_states = torch.FloatTensor(next_states).to(self.device)
-        dones = torch.FloatTensor(dones).to(self.device)
-        weights = torch.FloatTensor(weights).to(self.device)
+        states = torch.tensor(states,dtype=torch.float32, device=self.device)
+        actions = torch.tensor(actions,dtype=torch.long, device=self.device)
+        rewards = torch.tensor(rewards,dtype=torch.float32, device=self.device)
+        next_states = torch.tensor(next_states,dtype=torch.float32, device=self.device)
+        dones = torch.tensor(dones,dtype=torch.float32, device=self.device)
+        weights = torch.tensor(weights,dtype=torch.float32, device=self.device)
         
         # 1. Compute current Q-values: Q(s_t, a_t; theta)
         q_values = self.online_net(states)
