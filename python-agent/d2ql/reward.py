@@ -26,6 +26,8 @@ class RewardManager:
             config["reward"]["w_cost_init"]  # default 0.3
         ], dtype=np.float32)
 
+        self.weight_history = [] # records (w_sla, w_energy, w_util) per episode
+
     def compute_step_reward(
         self, 
         energy_this_step: float, 
@@ -82,7 +84,7 @@ class RewardManager:
         
         # Clip residuals to be non-negative
         residuals = np.clip(residuals, a_min=0.0, a_max=None)
-        
+        # w[0] -> SLA/performance, w[1] -> energy, w[2] -> utilization/cost
         # Normalize the residuals to fill up the remaining pool (1.0 - Sum of floors = 0.6)
         residual_sum = np.sum(residuals)
         target_residual_sum = 1.0 - self.sum_floors # 0.6
@@ -97,6 +99,8 @@ class RewardManager:
         self.w[0] = residuals[0] + self.w_perf_floor
         self.w[1] = residuals[1] + self.w_energy_floor
         self.w[2] = residuals[2] + self.w_cost_floor
+
+        self.weight_history.append(self.get_current_weights())
 
     def get_current_weights(self) -> dict:
         return {
