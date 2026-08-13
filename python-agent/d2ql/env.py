@@ -41,6 +41,9 @@ class CloudSimEnv(gym.Env):
         self.total_vms = self.config["datacenter"]["n_cloud_hosts"] * 4 # example VM count mapping
         self.action_space = spaces.Discrete(self.total_vms + 3)
 
+        self.java_entry=None
+        self.metadata={"render_modes":[]}
+
 
 
     def reset(self, seed=None, options=None):
