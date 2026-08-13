@@ -17,7 +17,7 @@
         <dependency>
             <groupId>org.cloudsimplus</groupId>
             <artifactId>cloudsimplus</artifactId>
-            <version>8.1.0</version> <!-- Or latest stable version -->
+            <version>8.5.7</version> 
         </dependency>
         <!-- Py4j Gateway -->
         <dependency>

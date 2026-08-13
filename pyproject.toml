@@ -8,6 +8,7 @@ dependencies = [
     "py4j>=0.10.9.9",
     "torch>=2.13.0",
     "pyyaml>=6.0.1",
+    "gymnasium>=0.29.1"
 ]
 
 [project.scripts]
