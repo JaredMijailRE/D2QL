@@ -192,3 +192,25 @@ class DDQNAgent:
     def decay_epsilon(self) -> None:
         """Anneal the exploration rate at the end of each episode."""
         self.epsilon = max(self.epsilon_end, self.epsilon * self.epsilon_decay)
+
+
+    def save(self, path: str) -> None:
+        """Persist online network weights, optimizer state, and agent metadata."""
+        torch.save({
+            "online_net": self.online_net.state_dict(),
+            "target_net": self.target_net.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "total_steps": self.total_steps,
+            "epsilon": self.epsilon,
+        }, path)
+
+    def load(self, path: str) -> None:
+        """Restore a previously saved checkpoint."""
+        checkpoint = torch.load(path, map_location=self.device)
+        self.online_net.load_state_dict(checkpoint["online_net"])
+        self.target_net.load_state_dict(checkpoint["target_net"])
+        self.optimizer.load_state_dict(checkpoint["optimizer"])
+        self.total_steps = checkpoint["total_steps"]
+        self.epsilon = checkpoint["epsilon"]
+
+
