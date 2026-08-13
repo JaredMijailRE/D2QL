@@ -1,16 +1,146 @@
+```toml
+# =============================================================================
+# [build-system] is strongly recommended by the Python Packaging Authority [1][5]
+# It declares which build backend pip should use and what it needs to run.
+# Without this table, tools fall back to guessing the backend, which can
+# produce inconsistent behavior across environments [1][5][9]
+# =============================================================================
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# =============================================================================
+# [project] — PEP 621 standardized metadata table [1][16][18]
+# name and version are the only strictly required fields [4][16]
+# but including the full set makes the package discoverable and installable [7]
+# =============================================================================
 [project]
 name = "d2ql"
 version = "0.1.0"
-description = "Scheudler development and simulation enviornment based on cloudsim"
+
+description = "Scheduler development and simulation environment based on CloudSimPlus"
+
 readme = "README.md"
+
+# Explicit Python version constraint prevents cryptic runtime errors
+# on incompatible interpreters [6][13][9]
 requires-python = ">=3.12"
+
+license = { text = "Apache-2.0" }
+
+authors = [
+    { name = "Autopoiesis Sciences" }
+]
+
+# Classifiers improve discoverability and signal compatibility [1][7][20]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: Apache Software License",
+]
+
+
+# uv.lock's metadata block, causing uv sync --frozen to skip it [1][6]
+# Run `uv lock` after this change to regenerate a consistent lockfile
 dependencies = [
     "py4j>=0.10.9.9",
     "torch>=2.13.0",
     "pyyaml>=6.0.1",
-    "gymnasium>=0.29.1"
+    "gymnasium>=0.29.1",
+    "numpy>=1.26.0",
 ]
 
+# =============================================================================
+# Optional dependency groups — keeps production installs lean [6][13][14]
+# Install with: uv sync --extra dev
+# =============================================================================
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    # Linting and formatting
+    "ruff>=0.4.0",
+    # Type checking
+    "mypy>=1.10.0",
+    # TensorBoard for training visualization
+    "tensorboard>=2.17.0",
+]
+
+# =============================================================================
+# [project.scripts] — entry points that become CLI commands after install [1][4][23]
+# The value format is "module.path:function" [23]
+# =============================================================================
 [project.scripts]
+train = "main:main"
 build-deps = "scripts.build_deps:main"
 
+# =============================================================================
+# [project.urls] — surfaces links on PyPI and in tooling [7][20]
+# =============================================================================
+[project.urls]
+Repository = "https://github.com/your-org/d2ql"
+Issues = "https://github.com/your-org/d2ql/issues"
+
+# =============================================================================
+# [tool.hatch] — tell Hatchling where to find the package source [13][17]
+# Without this, Hatchling may not find d2ql/ since it lives inside
+# python-agent/ rather than at the project root
+# =============================================================================
+[tool.hatch.build.targets.wheel]
+packages = ["python-agent/d2ql"]
+
+# =============================================================================
+# [tool.uv] — uv-specific configuration [1][6]
+# =============================================================================
+[tool.uv]
+# Ensures uv sync always installs from the lockfile exactly [6]
+# equivalent to --frozen flag but applied project-wide
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "tensorboard>=2.17.0",
+]
+
+# =============================================================================
+# [tool.ruff] — linter and formatter configuration [1][6][11]
+# Consolidates what would previously require .flake8, isort.cfg, etc. [11]
+# =============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+]
+ignore = [
+    "E501", # line too long — handled by formatter
+]
+
+# =============================================================================
+# [tool.mypy] — static type checking configuration [1][6][11]
+# =============================================================================
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true  # py4j and cloudsimplus have no stubs
+
+# =============================================================================
+# [tool.pytest.ini_options] — pytest configuration [1][6][11]
+# Replaces a separate pytest.ini file [11]
+# =============================================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=d2ql --cov-report=term-missing"
+```

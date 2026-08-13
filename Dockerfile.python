@@ -1,21 +1,80 @@
-FROM python:3.12-slim
+```dockerfile
+# =============================================================================
+# Stage 1: Builder
+# Install build tools and resolve dependencies here so the runtime image
+# never contains compilers or build headers [1][16][18][26]
+# =============================================================================
+FROM python:3.12-slim AS builder
+
+# PYTHONDONTWRITEBYTECODE prevents .pyc files from being written,
+# PYTHONUNBUFFERED ensures logs are sent directly to stdout/stderr
+# without buffering — critical for Docker log capture [2][3]
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-# Install system dependencies
+# Install build-essential only in the builder stage so it never
+# reaches the runtime image [1][16][19][26]
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
+# Copy uv binary from the official image [12]
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy package configurations directly from the root context
+# Copy dependency files first to maximize Docker layer cache [1][26][27]
+# If pyproject.toml and uv.lock are unchanged, this layer is reused
+# on every subsequent build even when source code changes [26][27]
 COPY pyproject.toml uv.lock ./
+
+# Install all dependencies into a virtual environment inside the builder [12][16]
+# --frozen ensures the lockfile is respected exactly [12]
+# --no-install-project skips installing the d2ql package itself at this stage
 RUN uv sync --frozen --no-install-project
 
-# Copy agent package code from the subdirectory
-COPY python-agent/d2ql ./d2ql
-COPY python-agent/main.py ./
+# =============================================================================
+# Stage 2: Runtime
+# Start from a clean slim image — no compilers, no build tools [1][2][18][19]
+# =============================================================================
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# create a dedicated non-root user before copying any files [1][2][3][8]
+# Running as root inside a container gives an attacker full container
+# privileges if the application is compromised [3][8][25]
+RUN groupadd --system d2ql && \
+    useradd --system --gid d2ql --no-create-home d2ql
+
+# Copy the uv binary into the runtime image so `uv run` works [12]
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy the fully resolved virtual environment from the builder stage [12][16][17]
+# Only the installed packages are copied — no compilers, no pip cache [1][16][26]
+COPY --from=builder /app/.venv /app/.venv
+
+# Make the virtual environment the active Python for all subsequent commands [16][17]
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy application source last — this is the most frequently changing layer [1][26][27]
+# Keeping it at the bottom means dependency layers above are cached on code changes [26][27]
+COPY --chown=d2ql:d2ql python-agent/d2ql ./d2ql
+COPY --chown=d2ql:d2ql python-agent/main.py ./
+
+# drop privileges before the process starts [1][2][3][8][21]
+# All previous RUN commands executed as root to install packages and set
+# ownership; now we permanently switch to the non-root user [21]
+USER d2ql
 
 # Expose TensorBoard port
 EXPOSE 6006
+
+#  provide a default CMD so the image is runnable standalone [1][4]
+# docker-compose.yml overrides this with the --config argument,
+# but `docker run python-agent` will work without extra flags [4]
+CMD ["uv", "run", "python", "main.py"]
+```
