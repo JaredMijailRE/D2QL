@@ -77,7 +77,7 @@ def load_config(config_path: str) -> dict:
 def run_training(config: dict) -> None:
     """
     Core training loop. Instantiates CloudSimEnv and DDQNAgent,
-    then runs the episode loop for the configured number of episodes. [32][1][26]
+    then runs the episode loop for the configured number of episodes. 
     """
     from d2ql.env import CloudSimEnv
     from d2ql.agent import DDQNAgent
@@ -95,6 +95,11 @@ def run_training(config: dict) -> None:
         action_dim=env.action_space.n,
         config=config
     )
+
+    resume_path = config.get("_resume_path", "")
+    if resume_path:
+        logger.info("Resuming from checkpoint: %s", resume_path)
+        agent.load(resume_path)
 
     reward_manager = RewardManager(config)
     n_episodes = config["training"]["n_episodes"]
