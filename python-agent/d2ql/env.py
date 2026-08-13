@@ -44,18 +44,26 @@ class CloudSimEnv(gym.Env):
         return obs, {}
 
 
-    def step(self, action):
-        # 1. Map python action to Java simulator call
-        # 2. Advance simulation clock
-        # 3. Compute reward, termination conditions, and observations
-        
-        terminated = False
+
+    def step(self, action: int):
+        # 1. Send action to simulator and advance the clock
+        self.java_entry.step(action)
+
+        # 2. Retrieve updated observation
+        obs_java = self.java_entry.getObservation()
+        obs = np.array(list(obs_java), dtype=np.float32)
+
+        # 3. Check termination
+        terminated = bool(self.java_entry.isDone())
         truncated = False
+
+        # 4. Reward is computed by RewardManager in main.py using
+        #    metrics returned from the simulator — placeholder for now
         reward = 0.0
-        obs = np.zeros(self.state_dim, dtype=np.float32)
         info = {}
-        
+
         return obs, reward, terminated, truncated, info
+
 
     def close(self):
         self.gateway.close()
