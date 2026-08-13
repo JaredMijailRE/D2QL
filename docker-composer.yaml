@@ -1,0 +1,27 @@
+services:
+  java-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile.java
+    container_name: java-sim
+    ports:
+      - "25333:25333"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stoppeds
+
+  python-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: python-agent
+    depends_on:
+      - java-sim
+    environment:
+      - JAVA_HOST=java-sim
+      - JAVA_PORT=25333
+    volumes:
+      - ./configs:/app/configs
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+    command: ["uv", "run", "python", "main.py", "--config", "configs/h1_adaptive_baseline.yaml"]
