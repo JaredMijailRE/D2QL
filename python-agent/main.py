@@ -1,12 +1,20 @@
+
 import os
 import sys
 import argparse
+import logging
 import random
 from pathlib import Path
-import yaml
-from py4j.java_gateway import JavaGateway, GatewayParameters, java_import
 
-# Default fallback configuration matching Section 13 schema
+import numpy as np
+import yaml
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 DEFAULT_CONFIG = {
     "experiment": {
         "id": "baseline_random_run",
@@ -23,147 +31,188 @@ DEFAULT_CONFIG = {
         "gamma": 0.98,
         "target_update_freq": 750,
         "batch_size": 64,
+        "replay_buffer_capacity": 100_000,
+        "replay_buffer_warmup": 2000,
+        "gradient_clip_norm": 10.0,
+        "epsilon_start": 1.0,
+        "epsilon_end": 0.05,
+        "epsilon_decay": 0.995,
+        "per_alpha": 0.6,
+        "per_beta_start": 0.4,
+        "per_beta_end": 1.0,
     },
     "training": {
         "n_episodes": 600,
-        "eval_every_n_episodes": 50
+        "eval_every_n_episodes": 50,
+        "checkpoint_dir": "outputs/checkpoints",
+    },
+    "reward": {
+        "target_utilization": 0.70,
+        "migration_penalty": 0.10,
+        "weight_lr": 0.01,
+        "w_perf_floor": 0.2,
+        "w_energy_floor": 0.1,
+        "w_cost_floor": 0.1,
+        "w_perf_init": 0.4,
+        "w_energy_init": 0.3,
+        "w_cost_init": 0.3,
     }
 }
 
+
 def load_config(config_path: str) -> dict:
     if not config_path:
+        logger.warning("No config path provided. Using DEFAULT_CONFIG.")
         return DEFAULT_CONFIG
     path = Path(config_path)
     if not path.exists():
-        print(f"Warning: Config file {config_path} not found. Using default schema.")
+        logger.warning("Config file %s not found. Using DEFAULT_CONFIG.", config_path)
         return DEFAULT_CONFIG
     with open(path, "r") as f:
-        return yaml.safe_load(f)
+        loaded = yaml.safe_load(f)
+    logger.info("Loaded config from %s.", config_path)
+    return loaded
 
-def connect_java_gateway(host: str, port: int) -> JavaGateway:
-    print(f"Connecting to Java Gateway at {host}:{port}...")
-    try:
-        gateway = JavaGateway(
-            gateway_parameters=GatewayParameters(address=host, port=port, auto_convert=True)
-        )
-        # Test connection by accessing the JVM
-        _ = gateway.jvm.java.lang.System.currentTimeMillis()
-        print("Successfully connected to Java Gateway.")
-        return gateway
-    except Exception as e:
-        print(f"Connection failed: {e}")
-        print("Ensure the java-sim container is running and accessible.")
-        sys.exit(1)
 
-def run_episode(gateway, jvm, config):
+def run_training(config: dict) -> None:
     """
-    Runs a single simulation episode using the remote JVM.
-    This serves as the core lifecycle layout for the Gym environment steps.
+    Core training loop. Instantiates CloudSimEnv and DDQNAgent,
+    then runs the episode loop for the configured number of episodes. [32][1][26]
     """
-    # Import required Java classes from the remote JVM
-    java_import(jvm, "java.util.ArrayList")
-    java_import(jvm, "org.cloudsimplus.core.CloudSimPlus")
-    java_import(jvm, "org.cloudsimplus.datacenters.DatacenterSimple")
-    java_import(jvm, "org.cloudsimplus.hosts.HostSimple")
-    java_import(jvm, "org.cloudsimplus.resources.PeSimple")
-    java_import(jvm, "org.cloudsimplus.vms.VmSimple")
-    java_import(jvm, "org.cloudsimplus.cloudlets.CloudletSimple")
-    java_import(jvm, "org.cloudsimplus.brokers.DatacenterBrokerSimple")
-    java_import(jvm, "org.cloudsimplus.schedulers.cloudlet.CloudletSchedulerTimeShared")
-    java_import(jvm, "org.cloudsimplus.schedulers.vm.VmSchedulerTimeShared")
+    from d2ql.env import CloudSimEnv
+    from d2ql.agent import DDQNAgent
+    from d2ql.reward import RewardManager
 
-    def to_java_list(py_list):
-        java_list = jvm.ArrayList()
-        for item in py_list:
-            java_list.add(item)
-        return java_list
+    checkpoint_dir = Path(config["training"]["checkpoint_dir"])
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize simulation instance
-    simulation = jvm.CloudSimPlus()
+    logger.info("Initializing CloudSimEnv...")
+    env = CloudSimEnv(config)
 
-    # Configure a basic topology
-    pe_list = to_java_list([jvm.PeSimple(1000.0) for _ in range(8)])
-    host = jvm.HostSimple(16384, 10000, 1000000, pe_list)
-    host.setVmScheduler(jvm.VmSchedulerTimeShared())
+    logger.info("Initializing DDQNAgent...")
+    agent = DDQNAgent(
+        state_dim=env.observation_space.shape[0],
+        action_dim=env.action_space.n,
+        config=config
+    )
 
-    datacenter = jvm.DatacenterSimple(simulation, to_java_list([host]))
-    broker = jvm.DatacenterBrokerSimple(simulation)
+    reward_manager = RewardManager(config)
+    n_episodes = config["training"]["n_episodes"]
+    eval_every = config["training"]["eval_every_n_episodes"]
 
-    vm_list = [
-        jvm.VmSimple(1000.0, 1)
-           .setRam(2048)
-           .setBw(1000)
-           .setSize(10000)
-           .setCloudletScheduler(jvm.CloudletSchedulerTimeShared())
-        for _ in range(5)
-    ]
+    logger.info(
+        "Starting training: %d episodes, evaluating every %d.",
+        n_episodes, eval_every
+    )
 
-    cloudlet_list = [
-        jvm.CloudletSimple(10000, 1)
-        for _ in range(10)
-    ]
+    for episode in range(n_episodes):
+        obs, _ = env.reset()
+        terminated = False
+        truncated = False
+        episode_reward = 0.0
+        episode_loss = 0.0
+        step_count = 0
 
-    # Assign Cloudlets to VMs
-    for cloudlet in cloudlet_list:
-        selected_vm = random.choice(vm_list)
-        cloudlet.setVm(selected_vm)
+        while not (terminated or truncated):
+            action = agent.select_action(obs)
+            next_obs, _, terminated, truncated, info = env.step(action)
 
-    broker.submitVmList(to_java_list(vm_list))
-    broker.submitCloudletList(to_java_list(cloudlet_list))
+            # Reward is computed by RewardManager using metrics from info dict.
+            # info will carry energy, SLA violations, utilizations, and
+            # migration flag once the Java gateway populates them. [32]
+            reward = reward_manager.compute_step_reward(
+                energy_this_step=info.get("energy", 0.0),
+                sla_violations_this_step=info.get("sla_violations", 0.0),
+                host_cpu_utilizations=info.get("cpu_utilizations", []),
+                did_migrate=info.get("did_migrate", False)
+            )
 
-    # Execute simulation
-    simulation.start()
+            done_flag = float(terminated or truncated)
+            agent.memory.push(obs, action, reward, next_obs, done_flag)
 
-    # Log metrics
-    print(f"\n--- Episode {config['experiment']['id']} Finished ---")
-    for cloudlet in broker.getCloudletFinishedList():
-        print(
-            f"Cloudlet {cloudlet.getId()} -> "
-            f"Assigned to VM {cloudlet.getVm().getId()} | "
-            f"CPU Execution Time: {cloudlet.getTotalExecutionTime():.2f}s"
+            loss = agent.train_step(episode)
+            episode_reward += reward
+            episode_loss += loss
+            step_count += 1
+            obs = next_obs
+
+        
+        agent.decay_epsilon()
+
+        # Adaptive weight update — deltas are placeholders until
+        # the dataset module provides real per-episode metric deltas
+        reward_manager.update_weights(
+            delta_perf=info.get("delta_perf", 0.0),
+            delta_energy=info.get("delta_energy", 0.0),
+            delta_cost=info.get("delta_cost", 0.0)
         )
+
+        avg_loss = episode_loss / max(step_count, 1)
+        logger.info(
+            "Episode %d/%d | Reward: %.4f | Avg Loss: %.6f | Epsilon: %.4f | Weights: %s",
+            episode + 1, n_episodes,
+            episode_reward,
+            avg_loss,
+            agent.epsilon,
+            reward_manager.get_current_weights()
+        )
+
+        # Periodic checkpoint save 
+        if (episode + 1) % eval_every == 0:
+            checkpoint_path = checkpoint_dir / f"checkpoint_ep{episode + 1}.pt"
+            agent.save(str(checkpoint_path))
+            logger.info("Checkpoint saved to %s.", checkpoint_path)
+
+    # Final checkpoint at end of training
+    final_path = checkpoint_dir / "checkpoint_final.pt"
+    agent.save(str(final_path))
+    logger.info("Training complete. Final checkpoint saved to %s.", final_path)
+
+    env.close()
+
 
 def main():
     parser = argparse.ArgumentParser(description="d2ql Agent Training Orchestrator")
-    parser.add_argument("--config", type=str, default="", help="Path to YAML configuration file")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="",
+        help="Path to YAML configuration file"
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default="",
+        help="Path to checkpoint file to resume training from"
+    )
     args = parser.parse_args()
 
-    # Load experimental variables
     config = load_config(args.config)
-    
-    # Configure random seeds for reproducibility
+
+    # Seed Python's random — agent.py seeds numpy and torch internally 
     seed = config["experiment"]["seed"]
     random.seed(seed)
 
-    # Read network details from environment variables for Docker deployment [1]
-    java_host = os.getenv("JAVA_HOST", "localhost")
-    java_port = int(os.getenv("JAVA_PORT", 25333))
+    logger.info(
+        "Starting experiment '%s' | Hypothesis: %s | Seed: %d",
+        config["experiment"]["id"],
+        config["experiment"]["hypothesis"],
+        seed
+    )
 
-    # Connect to the running simulation process [1]
-    gateway = connect_java_gateway(java_host, java_port)
-    jvm = gateway.jvm
+    # Resume from checkpoint if provided 
+    if args.resume:
+        resume_path = Path(args.resume)
+        if not resume_path.exists():
+            logger.error("Checkpoint file %s not found. Aborting.", args.resume)
+            sys.exit(1)
+        logger.info("Resuming from checkpoint: %s", args.resume)
+        # agent.load() is called inside run_training after instantiation —
+        # pass resume path via config so run_training can pick it up
+        config["_resume_path"] = str(resume_path)
 
-    try:
-        # Check if the environment wrapper and agent modules are implemented
-        try:
-            from d2ql.env import CloudSimEnv
-            from d2ql.agent import DDQNAgent
-            
-            print("Imported custom environment and agent modules. Starting training loop...")
-            # Placeholder for future Gymnasium loop:
-            # env = CloudSimEnv(config)
-            # agent = DDQNAgent(env.observation_space.shape[0], env.action_space.n, config)
-            # ... training loop logic using the custom components
-            
-        except ImportError:
-            print("Custom d2ql package modules (env/agent) not yet found.")
-            print("Executing fallback simulation verification on the connected JVM...")
-            run_episode(gateway, jvm, config)
+    run_training(config)
 
-    finally:
-        # Safely detach client resources without terminating the remote server
-        gateway.close()
-        print("Gateway client connection closed.")
 
 if __name__ == "__main__":
     main()
