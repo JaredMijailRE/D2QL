@@ -22,7 +22,12 @@ public class SimulationGateway {
             // Bind to 0.0.0.0 to allow container network communication
             InetAddress bindAddress = InetAddress.getByName("0.0.0.0");
             SimulationGateway app = new SimulationGateway();
-            GatewayServer server = new GatewayServer(app, 25333, bindAddress);
+            
+            // Build the server using the designated builder pattern
+            GatewayServer server = new GatewayServer.GatewayServerBuilder(app)
+                .javaAddress(bindAddress)
+                .javaPort(25333)
+                .build();
             
             System.out.println("Starting Py4J Gateway Server on 0.0.0.0:25333...");
             server.start();
